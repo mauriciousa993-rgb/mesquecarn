@@ -10,7 +10,10 @@ const isAdminRoute = (): boolean => {
   }
 
   const normalized = window.location.pathname.replace(/\/+$/, '');
-  return normalized.endsWith('/admin');
+  const adminQuery = new URLSearchParams(window.location.search).get('admin');
+  const adminHash = window.location.hash.replace(/^#/, '').trim().toLowerCase();
+
+  return normalized.endsWith('/admin') || adminQuery === '1' || adminHash === 'admin';
 };
 
 export const App = () => {
