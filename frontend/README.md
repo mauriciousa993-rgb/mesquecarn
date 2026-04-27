@@ -47,8 +47,7 @@ Si `npm` falla en WSL, ejecutalo desde terminal de Windows en esta carpeta.
 
 1. Copia `.env.example` a `.env`.
 2. Configura:
-   `VITE_CLOUDINARY_CLOUD_NAME`
-   `VITE_CLOUDINARY_UPLOAD_PRESET`
+   `VITE_BACKEND_URL`
    `VITE_CLOUDINARY_FOLDER` (opcional)
 
 ## Carga Masiva (Excel/CSV)

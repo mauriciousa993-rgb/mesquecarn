@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
+import multer from 'multer';
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -8,6 +9,8 @@ const FRONTEND_URL = process.env.FRONTEND_URL || '*';
 const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY;
 const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
+const DEFAULT_CLOUDINARY_FOLDER = process.env.CLOUDINARY_FOLDER || 'mes-que-carn';
+const upload = multer({ storage: multer.memoryStorage() });
 
 const allowedOrigins = FRONTEND_URL.split(',')
   .map((value) => value.trim())
@@ -99,6 +102,63 @@ app.post('/api/cloudinary/signature', (req, res) => {
     apiKey: CLOUDINARY_API_KEY,
     cloudName: CLOUDINARY_CLOUD_NAME
   });
+});
+
+app.post('/api/cloudinary/upload', upload.single('file'), async (req, res) => {
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+    return res.status(500).json({
+      error:
+        'Cloudinary backend no configurado. Define CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET.'
+    });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'Archivo requerido en campo "file".' });
+  }
+
+  const resourceType = req.body?.resourceType === 'video' ? 'video' : 'image';
+  const rawFolder = typeof req.body?.folder === 'string' ? req.body.folder.trim() : '';
+  const folder = rawFolder || DEFAULT_CLOUDINARY_FOLDER;
+  const timestamp = Math.floor(Date.now() / 1000);
+
+  const paramsToSign = {
+    folder,
+    timestamp
+  };
+  const signature = signCloudinaryParams(paramsToSign, CLOUDINARY_API_SECRET);
+  const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
+
+  const formData = new FormData();
+  formData.append('file', new Blob([req.file.buffer]), req.file.originalname || 'upload.bin');
+  formData.append('api_key', CLOUDINARY_API_KEY);
+  formData.append('timestamp', String(timestamp));
+  formData.append('signature', signature);
+  formData.append('folder', folder);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      body: formData
+    });
+    const raw = await response.text();
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: `Cloudinary upload failed (${response.status})`,
+        detail: raw
+      });
+    }
+
+    const data = JSON.parse(raw);
+    return res.status(201).json({
+      secureUrl: data.secure_url,
+      publicId: data.public_id,
+      resourceType: data.resource_type
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Error desconocido';
+    return res.status(500).json({ error: 'No se pudo subir a Cloudinary.', detail });
+  }
 });
 
 app.listen(PORT, () => {
