@@ -9,6 +9,24 @@ const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY;
 const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
 
+const allowedOrigins = FRONTEND_URL.split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const isOriginAllowed = (origin) => {
+  if (allowedOrigins.includes('*')) {
+    return true;
+  }
+
+  return allowedOrigins.some((rule) => {
+    if (rule.includes('*')) {
+      const regex = new RegExp(`^${rule.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*')}$`);
+      return regex.test(origin);
+    }
+    return rule === origin;
+  });
+};
+
 const signCloudinaryParams = (params, apiSecret) => {
   const serialized = Object.keys(params)
     .sort()
@@ -19,7 +37,17 @@ const signCloudinaryParams = (params, apiSecret) => {
 };
 
 app.use(express.json());
-app.use(cors({ origin: FRONTEND_URL === '*' ? true : FRONTEND_URL }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || isOriginAllowed(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    }
+  })
+);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'mesquecarn-backend' });
