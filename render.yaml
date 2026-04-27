@@ -1,5 +1,23 @@
 services:
   - type: web
+    name: mesquecarn-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_BACKEND_URL
+        sync: false
+      - key: VITE_CLOUDINARY_UPLOAD_PRESET
+        sync: false
+      - key: VITE_CLOUDINARY_FOLDER
+        value: mes-que-carn
+
+  - type: web
     name: mesquecarn-backend
     runtime: node
     rootDir: backend
@@ -9,4 +27,10 @@ services:
       - key: NODE_VERSION
         value: 20
       - key: FRONTEND_URL
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
         sync: false
