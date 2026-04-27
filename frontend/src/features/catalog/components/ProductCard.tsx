@@ -1,4 +1,5 @@
 import type { Product } from '../../../domain/products/product.types';
+import { useState } from 'react';
 import { formatCurrency } from '../../../shared/utils/currency';
 
 interface ProductCardProps {
@@ -12,13 +13,31 @@ export const ProductCard = ({ product, onAdd }: ProductCardProps) => {
   const isFastFood = product.categoryId === 'fast_food';
   const isMeatOrCheese = product.categoryId === 'meat_cheese';
   const lbPrice = isMeatOrCheese ? product.basePrice / KG_TO_LB : 0;
+  const [imageFailed, setImageFailed] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const hasImage = Boolean(product.image) && !imageFailed;
+  const hasVideo = Boolean(product.videoUrl) && !videoFailed;
+  const showImage = hasImage;
+  const showVideo = !showImage && hasVideo;
 
   return (
     <article className="group overflow-hidden rounded-2xl border border-amber-100/20 bg-[#15130f] shadow-[0_12px_40px_rgba(0,0,0,0.4)] transition hover:-translate-y-0.5 hover:border-amber-100/35">
-      {product.videoUrl ? (
-        <video src={product.videoUrl} className="h-44 w-full object-cover" controls muted playsInline />
-      ) : product.image ? (
-        <img src={product.image} alt={product.name} className="h-44 w-full object-cover" />
+      {showImage ? (
+        <img
+          src={product.image}
+          alt={product.name}
+          className="h-44 w-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      ) : showVideo ? (
+        <video
+          src={product.videoUrl}
+          className="h-44 w-full object-cover"
+          controls
+          muted
+          playsInline
+          onError={() => setVideoFailed(true)}
+        />
       ) : (
         <div className="h-44 w-full bg-[radial-gradient(circle_at_25%_25%,rgba(245,197,117,0.16),transparent_42%),linear-gradient(135deg,#1b1814,#0f0d0b)]" />
       )}
