@@ -265,10 +265,30 @@ export const AdminPanel = () => {
 
       if (type === 'image') {
         setForm((prev) => ({ ...prev, imageUrl: result.secureUrl }));
-        notify('success', 'Imagen subida a Cloudinary.');
+        if (editingId) {
+          const current = products.find((item) => item.id === editingId);
+          if (current) {
+            updateProduct({ ...current, image: result.secureUrl });
+            notify('success', 'Imagen subida y guardada en el producto.');
+          } else {
+            notify('success', 'Imagen subida a Cloudinary.');
+          }
+        } else {
+          notify('success', 'Imagen subida. Ahora pulsa "Agregar producto" para guardarla.');
+        }
       } else {
         setForm((prev) => ({ ...prev, videoUrl: result.secureUrl }));
-        notify('success', 'Video subido a Cloudinary.');
+        if (editingId) {
+          const current = products.find((item) => item.id === editingId);
+          if (current) {
+            updateProduct({ ...current, videoUrl: result.secureUrl });
+            notify('success', 'Video subido y guardado en el producto.');
+          } else {
+            notify('success', 'Video subido a Cloudinary.');
+          }
+        } else {
+          notify('success', 'Video subido. Ahora pulsa "Agregar producto" para guardarlo.');
+        }
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Error desconocido';
