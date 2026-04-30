@@ -2,6 +2,7 @@ import { createContext, useEffect, useMemo, useState } from 'react';
 import { catalogData } from '../../domain/products/products.data';
 import type { Category, Product } from '../../domain/products/product.types';
 import { loadProducts, saveProducts } from '../../infrastructure/storage/products.storage';
+import { normalizeMediaUrl } from '../../shared/utils/mediaUrl';
 
 interface ProductsContextValue {
   categories: Category[];
@@ -41,8 +42,8 @@ const pickString = (...values: unknown[]): string | undefined => {
 const normalizeProduct = (product: ProductWithLegacyMedia): Product => ({
   ...product,
   unit: pickString(product.unit),
-  image: pickString(product.image, product.imageUrl, product.image_url, product.imagen),
-  videoUrl: pickString(product.videoUrl, product.video, product.video_url, product.clip),
+  image: normalizeMediaUrl(pickString(product.image, product.imageUrl, product.image_url, product.imagen)),
+  videoUrl: normalizeMediaUrl(pickString(product.videoUrl, product.video, product.video_url, product.clip)),
   customization:
     product.customization && Array.isArray(product.customization.groups)
       ? product.customization

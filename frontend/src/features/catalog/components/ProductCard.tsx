@@ -27,6 +27,8 @@ export const ProductCard = ({ product, onAdd }: ProductCardProps) => {
           src={product.image}
           alt={product.name}
           className="h-44 w-full object-cover"
+          referrerPolicy="no-referrer"
+          loading="lazy"
           onError={() => setImageFailed(true)}
         />
       ) : showVideo ? (

@@ -5,6 +5,7 @@ import { uploadToCloudinary, isCloudinaryConfigured } from '../../../infrastruct
 import { useProducts } from '../../../shared/hooks/useProducts';
 import { useOrders } from '../../../shared/hooks/useOrders';
 import { formatCurrency } from '../../../shared/utils/currency';
+import { normalizeMediaUrl } from '../../../shared/utils/mediaUrl';
 
 interface ProductFormState {
   id: string;
@@ -82,8 +83,8 @@ const toProduct = (form: ProductFormState, existingId?: string): Product => {
     active: form.active,
     stock: Number(form.stock),
     unit: form.unit.trim() || undefined,
-    image: form.imageUrl.trim() || undefined,
-    videoUrl: form.videoUrl.trim() || undefined,
+    image: normalizeMediaUrl(form.imageUrl),
+    videoUrl: normalizeMediaUrl(form.videoUrl),
     customization:
       form.categoryId === 'fast_food' && form.fastFoodCustomizable
         ? fastFoodCustomization
@@ -167,7 +168,16 @@ const ImagePreview = ({ src, alt, className = '' }: ImagePreviewProps) => {
     );
   }
 
-  return <img src={normalizedSrc} alt={alt} onError={() => setImageFailed(true)} className={className} />;
+  return (
+    <img
+      src={normalizedSrc}
+      alt={alt}
+      onError={() => setImageFailed(true)}
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      className={className}
+    />
+  );
 };
 
 const ProductMediaPreview = ({ product }: { product: Product }) => (
@@ -369,8 +379,8 @@ export const AdminPanel = () => {
           active: toBool(row.active ?? row.disponible, true),
           stock,
           unit: String(row.unit ?? row.unidad ?? '').trim() || undefined,
-          image: String(row.image ?? row.imageUrl ?? row.imagen ?? '').trim() || undefined,
-          videoUrl: String(row.video ?? row.videoUrl ?? row.clip ?? '').trim() || undefined,
+          image: normalizeMediaUrl(String(row.image ?? row.imageUrl ?? row.imagen ?? '')),
+          videoUrl: normalizeMediaUrl(String(row.video ?? row.videoUrl ?? row.clip ?? '')),
           customization:
             category === 'fast_food' && customizable
               ? {
