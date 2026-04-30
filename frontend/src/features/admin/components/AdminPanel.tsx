@@ -143,11 +143,40 @@ const toNumber = (value: unknown, fallback: number): number => {
 const inputClass =
   'w-full rounded-xl border border-amber-100/20 bg-[#16130f] px-3 py-2 text-sm text-[#f7eddc] outline-none placeholder:text-amber-100/35 focus:border-amber-100/45';
 
+interface ImagePreviewProps {
+  src?: string;
+  alt: string;
+  className?: string;
+}
+
+const ImagePreview = ({ src, alt, className = '' }: ImagePreviewProps) => {
+  const [imageFailed, setImageFailed] = useState(false);
+  const normalizedSrc = src?.trim() ?? '';
+  useEffect(() => {
+    setImageFailed(false);
+  }, [normalizedSrc]);
+  const hasImage = Boolean(normalizedSrc) && !imageFailed;
+
+  if (!hasImage) {
+    return (
+      <div
+        className={`flex items-center justify-center rounded-lg border border-dashed border-amber-100/25 bg-[#18140f] text-[11px] uppercase tracking-[0.08em] text-amber-100/45 ${className}`.trim()}
+      >
+        Sin imagen
+      </div>
+    );
+  }
+
+  return <img src={normalizedSrc} alt={alt} onError={() => setImageFailed(true)} className={className} />;
+};
+
 const ProductMediaPreview = ({ product }: { product: Product }) => (
   <div className="mt-2 flex flex-wrap gap-2">
-    {product.image ? (
-      <img src={product.image} alt={product.name} className="h-20 w-24 rounded-lg border border-amber-100/15 object-cover" />
-    ) : null}
+    <ImagePreview
+      src={product.image}
+      alt={product.name}
+      className="h-20 w-24 rounded-lg border border-amber-100/15 object-cover"
+    />
     {product.videoUrl ? (
       <video src={product.videoUrl} className="h-20 w-32 rounded-lg border border-amber-100/15 object-cover" controls muted />
     ) : null}
@@ -507,6 +536,13 @@ export const AdminPanel = () => {
               <p className="mt-1 text-xs text-amber-100/45">
                 {isUploadingImage ? 'Subiendo imagen...' : 'Subida de imagen por Cloudinary'}
               </p>
+              <div className="mt-2">
+                <ImagePreview
+                  src={form.imageUrl}
+                  alt={form.name || 'Previsualizacion'}
+                  className="h-24 w-32 rounded-lg border border-amber-100/15 object-cover"
+                />
+              </div>
             </div>
 
             <div>

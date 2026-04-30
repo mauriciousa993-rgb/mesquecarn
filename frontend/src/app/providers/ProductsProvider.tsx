@@ -19,13 +19,45 @@ interface ProductsProviderProps {
   children: React.ReactNode;
 }
 
+type ProductWithLegacyMedia = Product & {
+  imageUrl?: string;
+  image_url?: string;
+  imagen?: string;
+  video?: string;
+  video_url?: string;
+  clip?: string;
+};
+
+const pickString = (...values: unknown[]): string | undefined => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return undefined;
+};
+
+const normalizeProduct = (product: ProductWithLegacyMedia): Product => ({
+  ...product,
+  unit: pickString(product.unit),
+  image: pickString(product.image, product.imageUrl, product.image_url, product.imagen),
+  videoUrl: pickString(product.videoUrl, product.video, product.video_url, product.clip),
+  customization:
+    product.customization && Array.isArray(product.customization.groups)
+      ? product.customization
+      : { enabled: false, groups: [] }
+});
+
 export const ProductsProvider = ({ children }: ProductsProviderProps) => {
-  const [products, setProducts] = useState<Product[]>(catalogData.products);
+  const [products, setProducts] = useState<Product[]>(() =>
+    catalogData.products.map((product) => normalizeProduct(product as ProductWithLegacyMedia))
+  );
 
   useEffect(() => {
     const cached = loadProducts();
     if (cached && cached.length > 0) {
-      setProducts(cached);
+      setProducts(cached.map((product) => normalizeProduct(product as ProductWithLegacyMedia)));
     }
   }, []);
 
@@ -38,11 +70,13 @@ export const ProductsProvider = ({ children }: ProductsProviderProps) => {
       products.filter((product) => product.active && product.categoryId === categoryId);
 
     const addProduct = (product: Product) => {
-      setProducts((prev) => [...prev, product]);
+      const normalized = normalizeProduct(product as ProductWithLegacyMedia);
+      setProducts((prev) => [...prev, normalized]);
     };
 
     const updateProduct = (product: Product) => {
-      setProducts((prev) => prev.map((item) => (item.id === product.id ? product : item)));
+      const normalized = normalizeProduct(product as ProductWithLegacyMedia);
+      setProducts((prev) => prev.map((item) => (item.id === normalized.id ? normalized : item)));
     };
 
     const upsertProducts = (incomingProducts: Product[]) => {
@@ -59,7 +93,8 @@ export const ProductsProvider = ({ children }: ProductsProviderProps) => {
           bySku.set(product.sku.toUpperCase(), index);
         });
 
-        for (const incoming of incomingProducts) {
+        for (const rawIncoming of incomingProducts) {
+          const incoming = normalizeProduct(rawIncoming as ProductWithLegacyMedia);
           const existingById = byId.get(incoming.id);
           const existingBySku = bySku.get(incoming.sku.toUpperCase());
           const existingIndex = existingById ?? existingBySku;
