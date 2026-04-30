@@ -12,21 +12,29 @@ const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
 const DEFAULT_CLOUDINARY_FOLDER = process.env.CLOUDINARY_FOLDER || 'mes-que-carn';
 const upload = multer({ storage: multer.memoryStorage() });
 
+const normalizeOriginValue = (value) => value.trim().replace(/\/+$/, '');
+
 const allowedOrigins = FRONTEND_URL.split(',')
-  .map((value) => value.trim())
+  .map((value) => normalizeOriginValue(value))
   .filter(Boolean);
 
 const isOriginAllowed = (origin) => {
+  const normalizedOrigin = normalizeOriginValue(origin);
+
   if (allowedOrigins.includes('*')) {
     return true;
   }
 
   return allowedOrigins.some((rule) => {
+    const normalizedRule = normalizeOriginValue(rule);
+
     if (rule.includes('*')) {
-      const regex = new RegExp(`^${rule.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*')}$`);
-      return regex.test(origin);
+      const regex = new RegExp(
+        `^${normalizedRule.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*')}$`
+      );
+      return regex.test(normalizedOrigin);
     }
-    return rule === origin;
+    return normalizedRule === normalizedOrigin;
   });
 };
 
