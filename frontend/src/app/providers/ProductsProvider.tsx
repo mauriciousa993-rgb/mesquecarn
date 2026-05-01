@@ -1,6 +1,7 @@
-import { createContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { catalogData } from '../../domain/products/products.data';
 import type { Category, Product } from '../../domain/products/product.types';
+import { fetchCatalog, saveCatalogProducts } from '../../infrastructure/api/products.api';
 import { loadProducts, saveProducts } from '../../infrastructure/storage/products.storage';
 import { normalizeMediaUrl } from '../../shared/utils/mediaUrl';
 
@@ -50,21 +51,93 @@ const normalizeProduct = (product: ProductWithLegacyMedia): Product => ({
       : { enabled: false, groups: [] }
 });
 
+const normalizeProducts = (products: ProductWithLegacyMedia[]): Product[] => products.map((product) => normalizeProduct(product));
+
+const countProductsWithMedia = (products: Product[]): number =>
+  products.reduce((total, product) => total + (product.image || product.videoUrl ? 1 : 0), 0);
+
+const shouldPreferLocalProducts = (localProducts: Product[], remoteProducts: Product[]): boolean => {
+  if (localProducts.length === 0) {
+    return false;
+  }
+
+  if (remoteProducts.length === 0) {
+    return true;
+  }
+
+  const localMedia = countProductsWithMedia(localProducts);
+  const remoteMedia = countProductsWithMedia(remoteProducts);
+
+  if (localMedia > remoteMedia && remoteMedia === 0) {
+    return true;
+  }
+
+  if (localProducts.length > remoteProducts.length && localMedia >= remoteMedia) {
+    return true;
+  }
+
+  return false;
+};
+
 export const ProductsProvider = ({ children }: ProductsProviderProps) => {
-  const [products, setProducts] = useState<Product[]>(() =>
-    catalogData.products.map((product) => normalizeProduct(product as ProductWithLegacyMedia))
-  );
+  const [products, setProducts] = useState<Product[]>(() => normalizeProducts(catalogData.products as ProductWithLegacyMedia[]));
 
   useEffect(() => {
+    let cancelled = false;
     const cached = loadProducts();
-    if (cached && cached.length > 0) {
-      setProducts(cached.map((product) => normalizeProduct(product as ProductWithLegacyMedia)));
+    const cachedProducts = cached ? normalizeProducts(cached as ProductWithLegacyMedia[]) : [];
+
+    if (cachedProducts.length > 0) {
+      setProducts(cachedProducts);
     }
+
+    const hydrateFromBackend = async () => {
+      try {
+        const remoteCatalog = await fetchCatalog();
+        const remoteProducts = Array.isArray(remoteCatalog.products)
+          ? normalizeProducts(remoteCatalog.products as ProductWithLegacyMedia[])
+          : [];
+
+        if (shouldPreferLocalProducts(cachedProducts, remoteProducts)) {
+          await saveCatalogProducts(cachedProducts);
+          if (!cancelled) {
+            setProducts(cachedProducts);
+          }
+          return;
+        }
+
+        if (remoteProducts.length > 0) {
+          if (!cancelled) {
+            setProducts(remoteProducts);
+          }
+          saveProducts(remoteProducts);
+          return;
+        }
+
+        if (cachedProducts.length > 0) {
+          await saveCatalogProducts(cachedProducts);
+        }
+      } catch (error) {
+        console.error('No se pudo sincronizar catalogo con backend.', error);
+      }
+    };
+
+    void hydrateFromBackend();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     saveProducts(products);
   }, [products]);
+
+  const persistProductsToBackend = useCallback((nextProducts: Product[]) => {
+    void saveCatalogProducts(nextProducts).catch((error) => {
+      console.error('No se pudo guardar catalogo en backend.', error);
+    });
+  }, []);
 
   const value = useMemo<ProductsContextValue>(() => {
     const getProductsByCategory = (categoryId: Product['categoryId']) =>
@@ -72,12 +145,20 @@ export const ProductsProvider = ({ children }: ProductsProviderProps) => {
 
     const addProduct = (product: Product) => {
       const normalized = normalizeProduct(product as ProductWithLegacyMedia);
-      setProducts((prev) => [...prev, normalized]);
+      setProducts((prev) => {
+        const next = [...prev, normalized];
+        persistProductsToBackend(next);
+        return next;
+      });
     };
 
     const updateProduct = (product: Product) => {
       const normalized = normalizeProduct(product as ProductWithLegacyMedia);
-      setProducts((prev) => prev.map((item) => (item.id === normalized.id ? normalized : item)));
+      setProducts((prev) => {
+        const next = prev.map((item) => (item.id === normalized.id ? normalized : item));
+        persistProductsToBackend(next);
+        return next;
+      });
     };
 
     const upsertProducts = (incomingProducts: Product[]) => {
@@ -114,6 +195,7 @@ export const ProductsProvider = ({ children }: ProductsProviderProps) => {
           }
         }
 
+        persistProductsToBackend(next);
         return next;
       });
 
@@ -121,9 +203,11 @@ export const ProductsProvider = ({ children }: ProductsProviderProps) => {
     };
 
     const toggleProductActive = (productId: string) => {
-      setProducts((prev) =>
-        prev.map((item) => (item.id === productId ? { ...item, active: !item.active } : item))
-      );
+      setProducts((prev) => {
+        const next = prev.map((item) => (item.id === productId ? { ...item, active: !item.active } : item));
+        persistProductsToBackend(next);
+        return next;
+      });
     };
 
     return {
@@ -135,7 +219,7 @@ export const ProductsProvider = ({ children }: ProductsProviderProps) => {
       upsertProducts,
       toggleProductActive
     };
-  }, [products]);
+  }, [persistProductsToBackend, products]);
 
   return <ProductsContext.Provider value={value}>{children}</ProductsContext.Provider>;
 };

@@ -2,6 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import multer from 'multer';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { catalogSeed } from './catalog.seed.js';
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -11,6 +15,55 @@ const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY;
 const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
 const DEFAULT_CLOUDINARY_FOLDER = process.env.CLOUDINARY_FOLDER || 'mes-que-carn';
 const upload = multer({ storage: multer.memoryStorage() });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const CATALOG_FILE_PATH = path.join(__dirname, 'data', 'catalog.json');
+
+const deepClone = (value) => JSON.parse(JSON.stringify(value));
+
+const normalizeCatalog = (candidate) => {
+  const baseCatalog = deepClone(catalogSeed);
+
+  if (!candidate || typeof candidate !== 'object') {
+    return baseCatalog;
+  }
+
+  const source = candidate;
+
+  if (source.store && typeof source.store === 'object') {
+    baseCatalog.store = { ...baseCatalog.store, ...source.store };
+  }
+
+  if (Array.isArray(source.categories) && source.categories.length > 0) {
+    baseCatalog.categories = source.categories;
+  }
+
+  if (Array.isArray(source.products)) {
+    baseCatalog.products = source.products;
+  }
+
+  return baseCatalog;
+};
+
+const loadCatalog = async () => {
+  try {
+    const raw = await fs.readFile(CATALOG_FILE_PATH, 'utf8');
+    return normalizeCatalog(JSON.parse(raw));
+  } catch (error) {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : '';
+    if (code !== 'ENOENT') {
+      console.error('No se pudo leer catalogo persistido. Se usara seed.', error);
+    }
+    return deepClone(catalogSeed);
+  }
+};
+
+const saveCatalog = async (catalog) => {
+  await fs.mkdir(path.dirname(CATALOG_FILE_PATH), { recursive: true });
+  await fs.writeFile(CATALOG_FILE_PATH, JSON.stringify(catalog, null, 2), 'utf8');
+};
+
+let catalogState = deepClone(catalogSeed);
 
 const normalizeOriginValue = (value) => value.trim().replace(/\/+$/, '');
 
@@ -65,9 +118,34 @@ app.get('/health', (_req, res) => {
 });
 
 app.get('/api/catalog', (_req, res) => {
-  res.json({
-    message: 'Catalog endpoint placeholder. The frontend currently uses local data/state.'
+  res.json(catalogState);
+});
+
+app.put('/api/catalog', async (req, res) => {
+  const payload = req.body;
+  const payloadObject = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  const incomingProducts = Array.isArray(payload) ? payload : payloadObject.products;
+
+  if (!Array.isArray(incomingProducts)) {
+    return res.status(400).json({
+      error: 'Payload invalido. Envia un array de productos o un objeto con { products: [] }.'
+    });
+  }
+
+  const nextCatalog = normalizeCatalog({
+    ...catalogState,
+    ...payloadObject,
+    products: incomingProducts
   });
+
+  try {
+    await saveCatalog(nextCatalog);
+    catalogState = nextCatalog;
+    return res.json(catalogState);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Error desconocido';
+    return res.status(500).json({ error: 'No se pudo guardar el catalogo.', detail });
+  }
 });
 
 app.post('/api/orders', (req, res) => {
@@ -169,6 +247,12 @@ app.post('/api/cloudinary/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
-});
+const startServer = async () => {
+  catalogState = await loadCatalog();
+
+  app.listen(PORT, () => {
+    console.log(`Backend running on port ${PORT}`);
+  });
+};
+
+void startServer();
