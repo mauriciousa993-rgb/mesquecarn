@@ -53,30 +53,50 @@ const normalizeProduct = (product: ProductWithLegacyMedia): Product => ({
 
 const normalizeProducts = (products: ProductWithLegacyMedia[]): Product[] => products.map((product) => normalizeProduct(product));
 
-const countProductsWithMedia = (products: Product[]): number =>
-  products.reduce((total, product) => total + (product.image || product.videoUrl ? 1 : 0), 0);
-
-const shouldPreferLocalProducts = (localProducts: Product[], remoteProducts: Product[]): boolean => {
+const mergeRemoteWithLocalProducts = (
+  remoteProducts: Product[],
+  localProducts: Product[]
+): { products: Product[]; changed: boolean } => {
   if (localProducts.length === 0) {
-    return false;
+    return { products: remoteProducts, changed: false };
   }
 
-  if (remoteProducts.length === 0) {
-    return true;
+  const merged = [...remoteProducts];
+  const byId = new Map<string, number>();
+  const bySku = new Map<string, number>();
+  let changed = false;
+
+  merged.forEach((product, index) => {
+    byId.set(product.id, index);
+    bySku.set(product.sku.toUpperCase(), index);
+  });
+
+  for (const localProduct of localProducts) {
+    const index = byId.get(localProduct.id) ?? bySku.get(localProduct.sku.toUpperCase());
+
+    if (index === undefined) {
+      merged.push(localProduct);
+      const nextIndex = merged.length - 1;
+      byId.set(localProduct.id, nextIndex);
+      bySku.set(localProduct.sku.toUpperCase(), nextIndex);
+      changed = true;
+      continue;
+    }
+
+    const remoteProduct = merged[index];
+    const nextProduct = {
+      ...remoteProduct,
+      image: remoteProduct.image || localProduct.image,
+      videoUrl: remoteProduct.videoUrl || localProduct.videoUrl
+    };
+
+    if (nextProduct.image !== remoteProduct.image || nextProduct.videoUrl !== remoteProduct.videoUrl) {
+      merged[index] = nextProduct;
+      changed = true;
+    }
   }
 
-  const localMedia = countProductsWithMedia(localProducts);
-  const remoteMedia = countProductsWithMedia(remoteProducts);
-
-  if (localMedia > remoteMedia && remoteMedia === 0) {
-    return true;
-  }
-
-  if (localProducts.length > remoteProducts.length && localMedia >= remoteMedia) {
-    return true;
-  }
-
-  return false;
+  return { products: merged, changed };
 };
 
 export const ProductsProvider = ({ children }: ProductsProviderProps) => {
@@ -98,7 +118,7 @@ export const ProductsProvider = ({ children }: ProductsProviderProps) => {
           ? normalizeProducts(remoteCatalog.products as ProductWithLegacyMedia[])
           : [];
 
-        if (shouldPreferLocalProducts(cachedProducts, remoteProducts)) {
+        if (remoteProducts.length === 0 && cachedProducts.length > 0) {
           await saveCatalogProducts(cachedProducts);
           if (!cancelled) {
             setProducts(cachedProducts);
@@ -107,15 +127,16 @@ export const ProductsProvider = ({ children }: ProductsProviderProps) => {
         }
 
         if (remoteProducts.length > 0) {
-          if (!cancelled) {
-            setProducts(remoteProducts);
-          }
-          saveProducts(remoteProducts);
-          return;
-        }
+          const mergedResult = mergeRemoteWithLocalProducts(remoteProducts, cachedProducts);
 
-        if (cachedProducts.length > 0) {
-          await saveCatalogProducts(cachedProducts);
+          if (mergedResult.changed) {
+            await saveCatalogProducts(mergedResult.products);
+          }
+
+          if (!cancelled) {
+            setProducts(mergedResult.products);
+          }
+          saveProducts(mergedResult.products);
         }
       } catch (error) {
         console.error('No se pudo sincronizar catalogo con backend.', error);
